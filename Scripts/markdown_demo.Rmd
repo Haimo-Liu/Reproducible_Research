@@ -1,0 +1,40 @@
+My First Rmarkdown file
+=======================
+
+This is my first markdown file
+
+
+First, let's set some global parameters
+```{r}
+library(knitr)
+opts_chunk$set(echo = TRUE, cache = TRUE)
+```
+
+
+
+**load data (code has been hidden)**
+
+```{r loaddata, echo = FALSE}
+library(datasets)
+data(airquality)
+```
+
+**data summary**
+
+```{r}
+summary(airquality)
+```
+
+
+**data plot**
+
+```{r}
+pairs(airquality)
+```
+
+here is an unordered list
+
+* first element
+* second element
+
+Dataset airquality contains the following columns "`r names(airquality)`".
