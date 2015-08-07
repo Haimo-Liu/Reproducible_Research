@@ -1,0 +1,202 @@
+#**Impact of Severe Weather Events on Public Health and Economy in the United States**#
+
+*Haimo Liu, Aug.7th 2015*
+
+##**Synopsis**##
+
+Storms and other severe weather events can cause both public health and economic problems for communities and municipalities. Many severe events can result in fatalities, injuries, and property damage, and preventing such outcomes to the extent possible is a key concern.
+
+This project involves exploring the U.S. National Oceanic and Atmospheric Administration's (NOAA) storm database. This database tracks characteristics of major storms and weather events in the United States, including when and where they occur, as well as estimates of any fatalities, injuries, and property damage.  We will use the estimates of fatalities, injuries, property and crop damage to decide which types of event are most harmful to the population health and economy.
+
+
+##**Basic Settings**##
+
+```{r}
+library(reshape2)
+library(plyr)
+library(ggplot2)
+require(gridExtra)
+```
+
+
+##**Data Processing**##
+
+###**1. Data Processing**###
+
+We first collect the storm data (skipped if data already exists). Please be patient and wait for a few moments:
+
+```{r cache = TRUE}
+if ((!'stormData.csv.bz2' %in% dir(getwd()))) {
+    download.file("http://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2", destfile = "stormData.csv.bz2")
+    }
+
+if (!'stormData' %in% ls()) {
+    stormData = read.csv("stormData.csv.bz2", sep = ",")
+    }
+```
+
+Next, let's take a quick look at the dataset and review the column information:
+
+```{r cache = TRUE}
+dim(stormData)
+str(stormData)
+```
+
+
+###**2. Data Preparation**###
+
+In the requirements, it says: "The events in the database start in the year 1950 and end in November 2011. In the earlier years of the database there are generally fewer events recorded, most likely due to a lack of good records. More recent years should be considered more complete." Therefore, we want to take a subset of the original data which contains only good records.
+
+First, let's calculate (and plot) rowcount by years:
+
+```{r cache = TRUE}
+stormData$year = as.numeric(format(as.POSIXct(as.character(stormData$BGN_DATE), format='%m/%d/%Y %H:%M:%S'), '%Y'))
+rowcount_year = count(stormData$year)
+plot(rowcount_year, col = ifelse (rowcount_year[, 2]<=10000, 'red', 'blue'), xlab = 'Year', ylab = '# of Observations')
+```
+
+Based on the above figure, we decided to take a subset of the dataset starting from year 1989 where we start to have more than 10,000 observations per year.
+
+```{r}
+stormsub = subset(stormData, stormData$year >= 1989)
+dim(stormsub)
+```
+
+We ended up getting a dataset with **762150** observations and **38** features.
+
+
+##**Data Analysis**##
+
+###**1. Events Hamful to Population Health**###
+
+First let's take a look at columns that are relevant to public health, impute missing values if any:
+
+```{r}
+str(stormsub$INJURIES)
+str(stormsub$FATALITIES)
+sum(is.na(c(stormsub$INJURIES, stormsub$FATALITIES)))
+```
+
+Next, let's melt the dataset by event type, and find out which one(s) tend to have higher impact on public health:
+
+```{r cache = TRUE}
+storm_melt = melt(stormsub, id.vars = 'EVTYPE', measure.vars = c('FATALITIES', 'INJURIES'))
+head(storm_melt)
+tail(storm_melt)
+storm_cast = dcast(storm_melt, EVTYPE ~ variable, sum)
+storm_fatal = storm_cast[, 1:2]
+storm_injury = storm_cast[, c(1, 3)]
+storm_top_fatal = storm_fatal[order(-storm_fatal$FATALITIES), ][1:10, ]
+storm_top_injury = storm_injury[order(-storm_injury$INJURIES), ][1:10, ]
+row.names(storm_top_fatal) = c(1:10)
+row.names(storm_top_injury) = c(1:10)
+storm_top_fatal$EVTYPE = factor(x = storm_top_fatal$EVTYPE, levels = storm_top_fatal$EVTYPE)
+storm_top_injury$EVTYPE = factor(x = storm_top_injury$EVTYPE, levels = storm_top_injury$EVTYPE)
+```
+
+
+
+
+
+###**2. Events Hamful to Economy**###
+
+First, we try to convert PROPDMG and CROPDMG to readable numerics:
+
+```{r cache = TRUE}
+storm_proc = stormsub
+storm_proc$PROPDMGC = as.character(storm_proc$PROPDMGEXP)
+tK = which(storm_proc$PROPDMGC == 'K')
+tM = which(storm_proc$PROPDMGC == 'M')
+tH = which(storm_proc$PROPDMGC == 'H')
+tB = which(storm_proc$PROPDMGC == 'B')
+tNA = which(storm_proc$PROPDMGC == '')
+storm_proc$PROPDMGC[tK] = 10^3
+storm_proc$PROPDMGC[tH] = 10^2
+storm_proc$PROPDMGC[tB] = 10^9
+storm_proc$PROPDMGC[tM] = 10^6
+storm_proc$PROPDMGC[tNA] = 1
+storm_proc$propDamage = as.numeric(storm_proc$PROPDMGC)*storm_proc$PROPDMG
+
+storm_proc$CROPDMGC = as.character(storm_proc$CROPDMGEXP)
+tK2 = which(storm_proc$CROPDMGC == 'K')
+tM2 = which(storm_proc$CROPDMGC == 'M')
+tH2 = which(storm_proc$CROPDMGC == 'H')
+tB2 = which(storm_proc$CROPDMGC == 'B')
+tNA2 = which(storm_proc$CROPDMGC == '')
+storm_proc$CROPDMGC[tK2] = 10^3
+storm_proc$CROPDMGC[tH2] = 10^2
+storm_proc$CROPDMGC[tB2] = 10^9
+storm_proc$CROPDMGC[tM2] = 10^6
+storm_proc$CROPDMGC[tNA2] = 1
+storm_proc$cropDamage = as.numeric(storm_proc$CROPDMGC)*storm_proc$CROPDMG
+```
+
+
+Next, let's melt the dataset by event type, and find out which one(s) tend to have higher impact on economy:
+
+```{r cache = TRUE}
+storm_melt2 = melt(storm_proc, id.vars = 'EVTYPE', measure.vars = c('propDamage', 'cropDamage'))
+storm_cast2 = dcast(storm_melt2, EVTYPE ~ variable, sum)
+storm_prop = storm_cast2[, 1:2]
+storm_crop = storm_cast2[, c(1, 3)]
+storm_top_prop = storm_prop[order(-storm_prop$propDamage), ][1:10, ]
+storm_top_crop = storm_crop[order(-storm_crop$cropDamage), ][1:10, ]
+storm_top_prop$EVTYPE = factor(x = storm_top_prop$EVTYPE, levels = storm_top_prop$EVTYPE)
+storm_top_crop$EVTYPE = factor(x = storm_top_crop$EVTYPE, levels = storm_top_crop$EVTYPE)
+```
+
+
+
+##**Results**##
+
+###**1. Events Hamful to Population Health**###
+
+Please find below the two lists corresponding to the top 10 events hamful to fatalities and injuries respectively:
+
+```{r}
+storm_top_fatal
+storm_top_injury
+```
+
+To visualize the data more clearly: 
+
+```{r}
+p1 = qplot(EVTYPE, FATALITIES, data = storm_top_fatal, geom = 'bar', stat = 'identity') + xlab('Event Type') + ylab('Total Fatality Count') + theme(axis.text.x = element_text(angle = 45, hjust = 1)) + ggtitle('Fatality by Event Type')
+
+p2 = qplot(EVTYPE, INJURIES, data = storm_top_injury, geom = 'bar', stat = 'identity') + xlab('Event Type') + ylab('Total Injury Count') + theme(axis.text.x = element_text(angle = 45, hjust = 1)) + ggtitle('Injury by Event Type')
+
+grid.arrange(p1, p2, ncol = 2)
+```
+
+
+**Across the United States, Tornado and Excessive Heat are most harmful to public health, from the perspective of fatality and injury respectively**
+
+
+###**2. Events Hamful to Economy**###
+
+Please find below the two lists corresponding to the top 10 events hamful to properties and crops respectively:
+
+```{r}
+storm_top_prop
+storm_top_crop
+```
+
+
+To visualize the data more clearly: 
+
+```{r}
+p3 = qplot(EVTYPE, propDamage, data = storm_top_prop, geom = 'bar', stat = 'identity') + xlab('Event Type') + ylab('Total Property Damage') + theme(axis.text.x = element_text(angle = 45, hjust = 1)) + ggtitle('Property Damage by Event Type')
+
+p4 = qplot(EVTYPE, cropDamage, data = storm_top_crop, geom = 'bar', stat = 'identity') + xlab('Event Type') + ylab('Total Crop Damage') + theme(axis.text.x = element_text(angle = 45, hjust = 1)) + ggtitle('Crop Damage by Event Type')
+
+grid.arrange(p3, p4, ncol = 2)
+```
+
+
+
+**Across the United States, Flood and Drought are most harmful to economy, from the perspective of property damage and crop damage respectively**
+
+
+
+
+
